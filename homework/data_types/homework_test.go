@@ -8,11 +8,7 @@ import (
 
 // go test -v homework_test.go
 
-type EndianType interface {
-	uint16 | uint32 | uint64
-}
-
-func ToLittleEndian[T EndianType](n T) T {
+func ToLittleEndian[T uint16 | uint32 | uint64](n T) T {
 	switch v := any(n).(type) {
 	case uint16:
 		return T(toLittleEndian16(v))
