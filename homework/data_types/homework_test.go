@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -9,35 +10,17 @@ import (
 // go test -v homework_test.go
 
 func ToLittleEndian[T uint16 | uint32 | uint64](n T) T {
-	switch v := any(n).(type) {
-	case uint16:
-		return T(toLittleEndian16(v))
-	case uint32:
-		return T(toLittleEndian32(v))
-	case uint64:
-		return T(toLittleEndian64(v))
-	default:
-		panic("unknown type")
+	size := unsafe.Sizeof(n)
+
+	for i, j := 0, int(size)-1; i < j; i, j = i+1, j-1 {
+		left := *(*uint8)(unsafe.Add(unsafe.Pointer(&n), i))
+		right := *(*uint8)(unsafe.Add(unsafe.Pointer(&n), j))
+
+		*(*uint8)(unsafe.Add(unsafe.Pointer(&n), i)) = right
+		*(*uint8)(unsafe.Add(unsafe.Pointer(&n), j)) = left
 	}
-}
 
-func toLittleEndian16(n uint16) uint16 {
-	return (n << 8) | (n >> 8)
-}
-
-func toLittleEndian32(n uint32) uint32 {
-	return (n&0xFF)<<24 | (n&0xFF00)<<8 | (n&0xFF0000)>>8 | (n&0xFF000000)>>24
-}
-
-func toLittleEndian64(n uint64) uint64 {
-	return ((n & 0xFF) << 56) |
-		((n & 0xFF00) << 40) |
-		((n & 0xFF0000) << 24) |
-		((n & 0xFF000000) << 8) |
-		((n & 0xFF00000000) >> 8) |
-		((n & 0xFF0000000000) >> 24) |
-		((n & 0xFF000000000000) >> 40) |
-		((n & 0xFF00000000000000) >> 56)
+	return n
 }
 
 func TestConversion(t *testing.T) {
