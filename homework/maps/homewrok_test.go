@@ -9,77 +9,77 @@ import (
 )
 
 // go test -v homework_test.go
-type node struct {
-	data int
-	key  int
-	next *node
-	prev *node
+type node[K comparable, V any] struct {
+	key  K
+	data V
+	next *node[K, V]
+	prev *node[K, V]
 }
 
-func (n *node) insertOrUpdateNode(key, val int) (*node, bool) {
+func (n *node[K, V]) insertOrUpdateNode(key K, val V, comparator func(a, b K) bool) (*node[K, V], bool) {
 	if n.key == key {
 		n.data = val
 		return n, false
 	}
-	if n.key > key {
+	if comparator(n.key, key) {
 		if n.prev == nil {
-			n.prev = &node{key: key, data: val, next: n}
+			n.prev = &node[K, V]{key: key, data: val, next: n}
 			return n.prev, true
 		}
 
-		if n.prev.key < key {
-			newNode := &node{key: key, data: val, prev: n.prev, next: n}
+		if comparator(key, n.prev.key) {
+			newNode := &node[K, V]{key: key, data: val, prev: n.prev, next: n}
 			n.prev.next = newNode
 			n.prev = newNode
 			return n.prev, true
 		}
 
-		return n.prev.insertOrUpdateNode(key, val)
+		return n.prev.insertOrUpdateNode(key, val, comparator)
 	}
 
 	if n.next == nil {
-		n.next = &node{key: key, prev: n, data: val}
+		n.next = &node[K, V]{key: key, prev: n, data: val}
 		return n.next, true
 	}
 
-	if n.next.key > key {
-		newNode := &node{key: key, prev: n, next: n.next, data: val}
+	if comparator(n.next.key, key) {
+		newNode := &node[K, V]{key: key, prev: n, next: n.next, data: val}
 		n.next.prev = newNode
 		n.next = newNode
 		return n.next, true
 	}
 
-	return n.next.insertOrUpdateNode(key, val)
+	return n.next.insertOrUpdateNode(key, val, comparator)
 }
 
-func (n *node) findNode(key int) *node {
+func (n *node[K, V]) findNode(key K, comparator func(a, b K) bool) *node[K, V] {
 	if n.key == key {
 		return n
 	}
-	if n.key > key {
+	if comparator(n.key, key) {
 		if n.prev == nil {
 			return nil
 		}
 
-		if n.prev.key < key {
+		if comparator(key, n.prev.key) {
 			return nil
 		}
 
-		return n.prev.findNode(key)
+		return n.prev.findNode(key, comparator)
 	}
 
 	if n.next == nil {
 		return nil
 	}
 
-	if n.next.key > key {
+	if comparator(n.next.key, key) {
 		return nil
 	}
 
-	return n.next.findNode(key)
+	return n.next.findNode(key, comparator)
 }
 
-func (n *node) first() *node {
+func (n *node[K, V]) first() *node[K, V] {
 	if n.prev == nil {
 		return n
 	}
@@ -87,7 +87,7 @@ func (n *node) first() *node {
 	return n.prev.first()
 }
 
-func (n *node) last() *node {
+func (n *node[K, V]) last() *node[K, V] {
 	if n.next == nil {
 		return n
 	}
@@ -95,20 +95,19 @@ func (n *node) last() *node {
 	return n.next.last()
 }
 
-type OrderedMap struct {
-	size int
-	root *node
+type OrderedMap[K comparable, V any] struct {
+	root       *node[K, V]
+	size       int
+	comparator func(a, b K) bool
 }
 
-func NewOrderedMap() OrderedMap {
-	return OrderedMap{
-		size: 0,
-	}
+func NewOrderedMap[K comparable, V any](comparator func(a, b K) bool) *OrderedMap[K, V] {
+	return &OrderedMap[K, V]{comparator: comparator}
 }
 
-func (m *OrderedMap) Insert(key, value int) {
+func (m *OrderedMap[K, V]) Insert(key K, value V) {
 	if m.root == nil {
-		m.root = &node{
+		m.root = &node[K, V]{
 			data: value,
 			key:  key,
 		}
@@ -116,13 +115,13 @@ func (m *OrderedMap) Insert(key, value int) {
 		return
 	}
 
-	_, isNew := m.root.insertOrUpdateNode(key, value)
+	_, isNew := m.root.insertOrUpdateNode(key, value, m.comparator)
 	if isNew {
 		m.size++
 	}
 }
 
-func (m *OrderedMap) Erase(key int) {
+func (m *OrderedMap[K, V]) Erase(key K) {
 	if m.root == nil {
 		return
 	}
@@ -133,7 +132,7 @@ func (m *OrderedMap) Erase(key int) {
 		return
 	}
 
-	nodeToDelete := m.root.findNode(key)
+	nodeToDelete := m.root.findNode(key, m.comparator)
 	if nodeToDelete == nil {
 		return
 	}
@@ -154,19 +153,19 @@ func (m *OrderedMap) Erase(key int) {
 	m.size--
 }
 
-func (m *OrderedMap) Contains(key int) bool {
+func (m *OrderedMap[K, V]) Contains(key K) bool {
 	if m.root == nil {
 		return false
 	}
-	dataNode := m.root.findNode(key)
+	dataNode := m.root.findNode(key, m.comparator)
 	return dataNode != nil
 }
 
-func (m *OrderedMap) Size() int {
+func (m *OrderedMap[K, V]) Size() int {
 	return m.size // need to implement
 }
 
-func (m *OrderedMap) ForEach(action func(int, int)) {
+func (m *OrderedMap[K, V]) ForEach(action func(K, V)) {
 	if m.root == nil {
 		return
 	}
@@ -181,13 +180,13 @@ func (m *OrderedMap) ForEach(action func(int, int)) {
 	}
 }
 
-func (m *OrderedMap) PrintTree() {
+func (m *OrderedMap[K, V]) PrintTree() {
 	firstNode := m.root.first()
 	currentNode := firstNode
 	for currentNode != nil {
 		currentKey := currentNode.key
-		prevKey := 0
-		nextKey := 0
+		var prevKey K
+		var nextKey K
 		if currentNode.next != nil {
 			nextKey = currentNode.next.key
 		}
@@ -201,7 +200,10 @@ func (m *OrderedMap) PrintTree() {
 }
 
 func TestCircularQueue(t *testing.T) {
-	data := NewOrderedMap()
+	less := func(a, b int) bool {
+		return a > b
+	}
+	data := NewOrderedMap[int, int](less)
 	assert.Zero(t, data.Size())
 
 	data.Insert(10, 10)
@@ -246,7 +248,10 @@ func TestCircularQueue(t *testing.T) {
 }
 
 func TestInsertDuplicateKey(t *testing.T) {
-	m := NewOrderedMap()
+	less := func(a, b int) bool {
+		return a > b
+	}
+	m := NewOrderedMap[int, int](less)
 	m.Insert(1, 10)
 	m.Insert(1, 20) // duplicate key, should update value, not size
 	assert.Equal(t, 1, m.Size())
@@ -256,7 +261,10 @@ func TestInsertDuplicateKey(t *testing.T) {
 }
 
 func TestEraseNonExistent(t *testing.T) {
-	m := NewOrderedMap()
+	less := func(a, b int) bool {
+		return a > b
+	}
+	m := NewOrderedMap[int, int](less)
 	m.Insert(1, 1)
 	m.Insert(2, 2)
 	m.Erase(3) // erase non-existent key
@@ -264,13 +272,19 @@ func TestEraseNonExistent(t *testing.T) {
 }
 
 func TestEraseFromEmpty(t *testing.T) {
-	m := NewOrderedMap()
+	less := func(a, b int) bool {
+		return a > b
+	}
+	m := NewOrderedMap[int, int](less)
 	m.Erase(1) // should not panic
 	assert.Zero(t, m.Size())
 }
 
 func TestInsertEraseSingle(t *testing.T) {
-	m := NewOrderedMap()
+	less := func(a, b int) bool {
+		return a > b
+	}
+	m := NewOrderedMap[int, int](less)
 	m.Insert(42, 100)
 	assert.Equal(t, 1, m.Size())
 	m.Erase(42)
@@ -279,14 +293,20 @@ func TestInsertEraseSingle(t *testing.T) {
 }
 
 func TestForEachEmpty(t *testing.T) {
-	m := NewOrderedMap()
+	less := func(a, b int) bool {
+		return a > b
+	}
+	m := NewOrderedMap[int, int](less)
 	called := false
 	m.ForEach(func(_, _ int) { called = true })
 	assert.False(t, called)
 }
 
 func TestOrderAfterMixedOps(t *testing.T) {
-	m := NewOrderedMap()
+	less := func(a, b int) bool {
+		return a > b
+	}
+	m := NewOrderedMap[int, int](less)
 	m.Insert(5, 50)
 	m.Insert(1, 10)
 	m.Insert(3, 30)
@@ -303,7 +323,10 @@ func TestOrderAfterMixedOps(t *testing.T) {
 }
 
 func TestNegativeAndLargeKeys(t *testing.T) {
-	m := NewOrderedMap()
+	less := func(a, b int) bool {
+		return a > b
+	}
+	m := NewOrderedMap[int, int](less)
 	m.Insert(-10, 1)
 	m.Insert(0, 2)
 	m.Insert(1000000, 3)
@@ -315,7 +338,10 @@ func TestNegativeAndLargeKeys(t *testing.T) {
 }
 
 func TestMinMaxIntKeys(t *testing.T) {
-	m := NewOrderedMap()
+	less := func(a, b int) bool {
+		return a > b
+	}
+	m := NewOrderedMap[int, int](less)
 	min := -1 << 63
 	max := 1<<63 - 1
 	m.Insert(min, 111)
@@ -328,4 +354,74 @@ func TestMinMaxIntKeys(t *testing.T) {
 	assert.True(t, m.Contains(min))
 	assert.True(t, m.Contains(max))
 	assert.True(t, m.Contains(0))
+}
+
+func TestStringKeysAndValues(t *testing.T) {
+	less := func(a, b string) bool { return a > b }
+	m := NewOrderedMap[string, string](less)
+	m.Insert("b", "bee")
+	m.Insert("a", "alpha")
+	m.Insert("c", "cat")
+	var keys []string
+	var values []string
+	m.ForEach(func(k, v string) {
+		keys = append(keys, k)
+		values = append(values, v)
+	})
+	assert.True(t, reflect.DeepEqual([]string{"a", "b", "c"}, keys))
+	assert.True(t, reflect.DeepEqual([]string{"alpha", "bee", "cat"}, values))
+}
+
+func TestFloat64Keys(t *testing.T) {
+	less := func(a, b float64) bool { return a > b }
+	m := NewOrderedMap[float64, int](less)
+	m.Insert(2.2, 22)
+	m.Insert(1.1, 11)
+	m.Insert(3.3, 33)
+	var keys []float64
+	m.ForEach(func(k float64, _ int) { keys = append(keys, k) })
+	assert.True(t, reflect.DeepEqual([]float64{1.1, 2.2, 3.3}, keys))
+}
+
+func TestRuneKeys(t *testing.T) {
+	less := func(a, b rune) bool { return a > b }
+	m := NewOrderedMap[rune, string](less)
+	m.Insert('b', "bee")
+	m.Insert('a', "alpha")
+	m.Insert('c', "cat")
+	var keys []rune
+	m.ForEach(func(k rune, _ string) { keys = append(keys, k) })
+	assert.True(t, reflect.DeepEqual([]rune{'a', 'b', 'c'}, keys))
+}
+
+type person struct {
+	Name string
+	Age  int
+}
+
+func TestStructValues(t *testing.T) {
+	less := func(a, b int) bool { return a > b }
+	m := NewOrderedMap[int, person](less)
+	m.Insert(2, person{"Bob", 30})
+	m.Insert(1, person{"Alice", 25})
+	m.Insert(3, person{"Carol", 40})
+	var names []string
+	m.ForEach(func(_ int, v person) { names = append(names, v.Name) })
+	assert.True(t, reflect.DeepEqual([]string{"Alice", "Bob", "Carol"}, names))
+}
+
+type keyByField struct {
+	ID  int
+	Tag string
+}
+
+func TestStructKeysByField(t *testing.T) {
+	less := func(a, b keyByField) bool { return a.ID > b.ID }
+	m := NewOrderedMap[keyByField, string](less)
+	m.Insert(keyByField{2, "b"}, "bee")
+	m.Insert(keyByField{1, "a"}, "alpha")
+	m.Insert(keyByField{3, "c"}, "cat")
+	var ids []int
+	m.ForEach(func(k keyByField, _ string) { ids = append(ids, k.ID) })
+	assert.True(t, reflect.DeepEqual([]int{1, 2, 3}, ids))
 }
