@@ -11,43 +11,45 @@ import (
 // go test -v homework_test.go
 type node[K comparable, V any] struct {
 	key  K
+	data V
 	next *node[K, V]
 	prev *node[K, V]
 }
 
-func (n *node[K, V]) insertOrGetNode(key K, val V, comparator func(a, b K) bool) *node[K, V] {
+func (n *node[K, V]) insertOrUpdateNode(key K, val V, comparator func(a, b K) bool) (*node[K, V], bool) {
 	if n.key == key {
-		return n
+		n.data = val
+		return n, false
 	}
 	if comparator(n.key, key) {
 		if n.prev == nil {
-			n.prev = &node[K, V]{key: key, next: n}
-			return n.prev
+			n.prev = &node[K, V]{key: key, data: val, next: n}
+			return n.prev, true
 		}
 
 		if comparator(key, n.prev.key) {
-			newNode := &node[K, V]{key: key, prev: n.prev, next: n}
+			newNode := &node[K, V]{key: key, data: val, prev: n.prev, next: n}
 			n.prev.next = newNode
 			n.prev = newNode
-			return n.prev
+			return n.prev, true
 		}
 
-		return n.prev.insertOrGetNode(key, val, comparator)
+		return n.prev.insertOrUpdateNode(key, val, comparator)
 	}
 
 	if n.next == nil {
-		n.next = &node[K, V]{key: key, prev: n}
-		return n.next
+		n.next = &node[K, V]{key: key, prev: n, data: val}
+		return n.next, true
 	}
 
 	if comparator(n.next.key, key) {
-		newNode := &node[K, V]{key: key, prev: n, next: n.next}
+		newNode := &node[K, V]{key: key, prev: n, next: n.next, data: val}
 		n.next.prev = newNode
 		n.next = newNode
-		return n.next
+		return n.next, true
 	}
 
-	return n.next.insertOrGetNode(key, val, comparator)
+	return n.next.insertOrUpdateNode(key, val, comparator)
 }
 
 func (n *node[K, V]) findNode(key K, comparator func(a, b K) bool) *node[K, V] {
@@ -95,35 +97,38 @@ func (n *node[K, V]) last() *node[K, V] {
 
 type OrderedMap[K comparable, V any] struct {
 	root       *node[K, V]
-	dataMap    map[K]V
+	size       int
 	comparator func(a, b K) bool
 }
 
 func NewOrderedMap[K comparable, V any](comparator func(a, b K) bool) *OrderedMap[K, V] {
-	return &OrderedMap[K, V]{comparator: comparator, dataMap: make(map[K]V)}
+	return &OrderedMap[K, V]{comparator: comparator}
 }
 
 func (m *OrderedMap[K, V]) Insert(key K, value V) {
 	if m.root == nil {
 		m.root = &node[K, V]{
-			key: key,
+			data: value,
+			key:  key,
 		}
-		m.dataMap[key] = value
+		m.size++
 		return
 	}
 
-	n := m.root.insertOrGetNode(key, value, m.comparator)
-	m.dataMap[n.key] = value
+	_, isNew := m.root.insertOrUpdateNode(key, value, m.comparator)
+	if isNew {
+		m.size++
+	}
 }
 
 func (m *OrderedMap[K, V]) Erase(key K) {
-	delete(m.dataMap, key)
 	if m.root == nil {
 		return
 	}
 
 	if m.root.next == nil && m.root.prev == nil {
 		m.root = nil
+		m.size--
 		return
 	}
 
@@ -134,24 +139,30 @@ func (m *OrderedMap[K, V]) Erase(key K) {
 
 	if nodeToDelete.prev == nil {
 		nodeToDelete.next.prev = nil
+		m.size--
 		return
 	}
 	if nodeToDelete.next == nil {
 		nodeToDelete.prev.next = nil
+		m.size--
 		return
 	}
 
 	nodeToDelete.next.prev = nodeToDelete.prev
 	nodeToDelete.prev.next = nodeToDelete.next
+	m.size--
 }
 
 func (m *OrderedMap[K, V]) Contains(key K) bool {
-	_, ok := m.dataMap[key]
-	return ok
+	if m.root == nil {
+		return false
+	}
+	dataNode := m.root.findNode(key, m.comparator)
+	return dataNode != nil
 }
 
 func (m *OrderedMap[K, V]) Size() int {
-	return len(m.dataMap) // need to implement
+	return m.size // need to implement
 }
 
 func (m *OrderedMap[K, V]) ForEach(action func(K, V)) {
@@ -164,7 +175,7 @@ func (m *OrderedMap[K, V]) ForEach(action func(K, V)) {
 	}
 	currentNode := firstNode
 	for currentNode != nil {
-		action(currentNode.key, m.dataMap[currentNode.key])
+		action(currentNode.key, currentNode.data)
 		currentNode = currentNode.next
 	}
 }
