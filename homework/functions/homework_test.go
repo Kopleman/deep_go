@@ -173,3 +173,152 @@ func TestReduce(t *testing.T) {
 		})
 	}
 }
+
+func TestMap_Extended(t *testing.T) {
+	t.Run("map strings to their lengths", func(t *testing.T) {
+		data := []string{"go", "lang", "test"}
+		result := Map(data, func(s string) int { return len(s) })
+		assert.Equal(t, []int{2, 4, 4}, result)
+	})
+
+	t.Run("map struct to string", func(t *testing.T) {
+		type S struct{ V int }
+		data := []S{{1}, {2}, {3}}
+		result := Map(data, func(s S) string { return "val" })
+		assert.Equal(t, []string{"val", "val", "val"}, result)
+	})
+
+	t.Run("map slice of slices to their lengths", func(t *testing.T) {
+		data := [][]int{{1, 2}, {}, {3}}
+		result := Map(data, func(s []int) int { return len(s) })
+		assert.Equal(t, []int{2, 0, 1}, result)
+	})
+
+	t.Run("map with identity function", func(t *testing.T) {
+		data := []int{1, 2, 3}
+		result := Map(data, func(x int) int { return x })
+		assert.Equal(t, data, result)
+	})
+
+	t.Run("map with constant function", func(t *testing.T) {
+		data := []int{1, 2, 3}
+		result := Map(data, func(x int) int { return 42 })
+		assert.Equal(t, []int{42, 42, 42}, result)
+	})
+
+	t.Run("map with nil action panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic with nil action")
+			}
+		}()
+		_ = Map[int, int]([]int{1}, nil)
+	})
+
+	t.Run("copy-on-write: changing input after map does not affect result", func(t *testing.T) {
+		data := []int{1, 2, 3}
+		result := Map(data, func(x int) int { return x + 1 })
+		data[0] = 100
+		assert.Equal(t, []int{2, 3, 4}, result)
+	})
+}
+
+func TestFilter_Extended(t *testing.T) {
+	t.Run("filter strings by length", func(t *testing.T) {
+		data := []string{"go", "lang", "a"}
+		result := Filter(data, func(s string) bool { return len(s) > 1 })
+		assert.Equal(t, []string{"go", "lang"}, result)
+	})
+
+	t.Run("filter struct by field", func(t *testing.T) {
+		type S struct{ V int }
+		data := []S{{1}, {2}, {3}}
+		result := Filter(data, func(s S) bool { return s.V%2 == 1 })
+		assert.Equal(t, []S{{1}, {3}}, result)
+	})
+
+	t.Run("filter slice of slices by length", func(t *testing.T) {
+		data := [][]int{{1, 2}, {}, {3}}
+		result := Filter(data, func(s []int) bool { return len(s) > 0 })
+		assert.Equal(t, [][]int{{1, 2}, {3}}, result)
+	})
+
+	t.Run("filter with always true", func(t *testing.T) {
+		data := []int{1, 2, 3}
+		result := Filter(data, func(x int) bool { return true })
+		assert.Equal(t, data, result)
+	})
+
+	t.Run("filter with always false", func(t *testing.T) {
+		data := []int{1, 2, 3}
+		result := Filter(data, func(x int) bool { return false })
+		assert.Equal(t, []int{}, result)
+	})
+
+	t.Run("filter with nil action panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic with nil action")
+			}
+		}()
+		_ = Filter([]int{1}, nil)
+	})
+
+	t.Run("copy-on-write: changing input after filter does not affect result", func(t *testing.T) {
+		data := []int{1, 2, 3}
+		result := Filter(data, func(x int) bool { return x > 1 })
+		data[1] = 100
+		assert.Equal(t, []int{2, 3}, result)
+	})
+}
+
+func TestReduce_Extended(t *testing.T) {
+	t.Run("reduce strings to concatenation", func(t *testing.T) {
+		data := []string{"a", "b", "c"}
+		result := Reduce(data, "", func(a, b string) string { return a + b })
+		assert.Equal(t, "abc", result)
+	})
+
+	t.Run("reduce struct to count (via int slice)", func(t *testing.T) {
+		type S struct{ V int }
+		data := []S{{1}, {2}, {3}}
+		intData := Map(data, func(s S) int { return 1 })
+		result := Reduce(intData, 0, func(a, b int) int { return a + b })
+		assert.Equal(t, 3, result)
+	})
+
+	t.Run("reduce slice of slices to total length (via int slice)", func(t *testing.T) {
+		data := [][]int{{1, 2}, {}, {3}}
+		lengths := Map(data, func(s []int) int { return len(s) })
+		result := Reduce(lengths, 0, func(a, b int) int { return a + b })
+		assert.Equal(t, 3, result)
+	})
+
+	t.Run("reduce with idempotent function", func(t *testing.T) {
+		data := []int{1, 2, 3}
+		result := Reduce(data, 0, func(a, b int) int { return a })
+		assert.Equal(t, 0, result)
+	})
+
+	t.Run("reduce with constant function", func(t *testing.T) {
+		data := []int{1, 2, 3}
+		result := Reduce(data, 0, func(a, b int) int { return 42 })
+		assert.Equal(t, 42, result)
+	})
+
+	t.Run("reduce with nil action panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic with nil action")
+			}
+		}()
+		_ = Reduce([]int{1}, 0, nil)
+	})
+
+	t.Run("copy-on-write: changing input after reduce does not affect result", func(t *testing.T) {
+		data := []int{1, 2, 3}
+		result := Reduce(data, 0, func(a, b int) int { return a + b })
+		data[0] = 100
+		assert.Equal(t, 6, result)
+	})
+}
