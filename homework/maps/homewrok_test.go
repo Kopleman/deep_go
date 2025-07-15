@@ -11,45 +11,44 @@ import (
 // go test -v homework_test.go
 type node[K comparable, V any] struct {
 	key  K
-	data V
+	data *V
 	next *node[K, V]
 	prev *node[K, V]
 }
 
-func (n *node[K, V]) insertOrUpdateNode(key K, val V, comparator func(a, b K) bool) (*node[K, V], bool) {
+func (n *node[K, V]) fetchNode(key K, comparator func(a, b K) bool) *node[K, V] {
 	if n.key == key {
-		n.data = val
-		return n, false
+		return n
 	}
 	if comparator(n.key, key) {
 		if n.prev == nil {
-			n.prev = &node[K, V]{key: key, data: val, next: n}
-			return n.prev, true
+			n.prev = &node[K, V]{key: key, next: n}
+			return n.prev
 		}
 
 		if comparator(key, n.prev.key) {
-			newNode := &node[K, V]{key: key, data: val, prev: n.prev, next: n}
+			newNode := &node[K, V]{key: key, prev: n.prev, next: n}
 			n.prev.next = newNode
 			n.prev = newNode
-			return n.prev, true
+			return n.prev
 		}
 
-		return n.prev.insertOrUpdateNode(key, val, comparator)
+		return n.prev.fetchNode(key, comparator)
 	}
 
 	if n.next == nil {
-		n.next = &node[K, V]{key: key, prev: n, data: val}
-		return n.next, true
+		n.next = &node[K, V]{key: key, prev: n}
+		return n.next
 	}
 
 	if comparator(n.next.key, key) {
-		newNode := &node[K, V]{key: key, prev: n, next: n.next, data: val}
+		newNode := &node[K, V]{key: key, prev: n, next: n.next}
 		n.next.prev = newNode
 		n.next = newNode
-		return n.next, true
+		return n.next
 	}
 
-	return n.next.insertOrUpdateNode(key, val, comparator)
+	return n.next.fetchNode(key, comparator)
 }
 
 func (n *node[K, V]) findNode(key K, comparator func(a, b K) bool) *node[K, V] {
@@ -108,17 +107,18 @@ func NewOrderedMap[K comparable, V any](comparator func(a, b K) bool) *OrderedMa
 func (m *OrderedMap[K, V]) Insert(key K, value V) {
 	if m.root == nil {
 		m.root = &node[K, V]{
-			data: value,
+			data: &value,
 			key:  key,
 		}
 		m.size++
 		return
 	}
 
-	_, isNew := m.root.insertOrUpdateNode(key, value, m.comparator)
-	if isNew {
+	fetchedNode := m.root.fetchNode(key, m.comparator)
+	if fetchedNode.data == nil {
 		m.size++
 	}
+	fetchedNode.data = &value
 }
 
 func (m *OrderedMap[K, V]) Erase(key K) {
@@ -175,7 +175,8 @@ func (m *OrderedMap[K, V]) ForEach(action func(K, V)) {
 	}
 	currentNode := firstNode
 	for currentNode != nil {
-		action(currentNode.key, currentNode.data)
+		value := *currentNode.data
+		action(currentNode.key, value)
 		currentNode = currentNode.next
 	}
 }
