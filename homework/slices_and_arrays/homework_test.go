@@ -2,7 +2,6 @@ package main
 
 import (
 	"reflect"
-	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,56 +17,36 @@ type CircularQueue[T IntNum] struct {
 	values []T
 	front  int
 	rear   int
-	size   int
-}
-
-func (q *CircularQueue[T]) ValidateValue(val T) bool {
-	return val >= 0
+	length int
 }
 
 func NewCircularQueue[T IntNum](size int) CircularQueue[T] {
-	emptyValue := T(-1)
 	return CircularQueue[T]{
-		values: slices.Repeat([]T{emptyValue}, size),
-		front:  -1,
+		values: make([]T, size),
 		rear:   -1,
-		size:   size,
 	}
 }
 
 func (q *CircularQueue[T]) Push(value T) bool {
-	if !q.ValidateValue(value) {
-		panic("invalid value")
-	}
 	if q.Full() {
 		return false
 	}
-	//first value come in
-	if q.front == -1 {
-		q.front = 0
-		q.rear = 0
-	} else {
-		q.rear = (q.rear + 1) % q.size
-	}
+
+	q.rear = (q.rear + 1) % len(q.values)
 	q.values[q.rear] = value
+	q.length++
+
 	return true
 }
 
 func (q *CircularQueue[T]) Pop() bool {
-	if q.front == -1 {
+	if q.Empty() {
 		return false
 	}
 
-	if q.front == q.rear { // edge case poping last element from queue
-		front := q.front
-		q.front = -1
-		q.rear = -1
-		q.values[front] = -1
-		return true
-	}
+	q.front = (q.front + 1) % len(q.values)
+	q.length--
 
-	q.values[q.front] = -1
-	q.front = (q.front + 1) % q.size
 	return true
 }
 
@@ -75,6 +54,7 @@ func (q *CircularQueue[T]) Front() T {
 	if q.Empty() {
 		return -1
 	}
+
 	return q.values[q.front]
 }
 
@@ -82,15 +62,17 @@ func (q *CircularQueue[T]) Back() T {
 	if q.Empty() {
 		return -1
 	}
-	return q.values[q.rear]
+
+	v := q.values[q.rear]
+	return v
 }
 
 func (q *CircularQueue[T]) Empty() bool {
-	return q.front == -1
+	return q.length == 0
 }
 
 func (q *CircularQueue[T]) Full() bool {
-	return (q.rear+1)%q.size == q.front
+	return q.length == len(q.values)
 }
 
 func TestCircularQueue_Generic(t *testing.T) {
@@ -212,7 +194,7 @@ func TestCircularQueue_CyclePushPop(t *testing.T) {
 
 	assert.True(t, queue.Pop())
 
-	assert.True(t, reflect.DeepEqual([]int{-1, 20, 30}, queue.values))
+	assert.True(t, reflect.DeepEqual([]int{10, 20, 30}, queue.values))
 
 	assert.True(t, queue.Push(40))
 
@@ -225,7 +207,7 @@ func TestCircularQueue_CyclePushPop(t *testing.T) {
 	assert.True(t, queue.Pop())
 	assert.True(t, queue.Pop())
 
-	assert.True(t, reflect.DeepEqual([]int{-1, -1, -1}, queue.values))
+	assert.True(t, reflect.DeepEqual([]int{40, 20, 30}, queue.values))
 	assert.True(t, queue.Empty())
 }
 
@@ -242,7 +224,7 @@ func TestCircularQueue_SizeOne(t *testing.T) {
 	assert.Equal(t, 5, queue.Back())
 	assert.True(t, queue.Pop())
 
-	assert.True(t, reflect.DeepEqual([]int{-1}, queue.values))
+	assert.True(t, reflect.DeepEqual([]int{5}, queue.values))
 
 	assert.True(t, queue.Empty())
 	assert.True(t, queue.Push(7))
@@ -253,7 +235,7 @@ func TestCircularQueue_SizeOne(t *testing.T) {
 	assert.True(t, queue.Pop())
 	assert.True(t, queue.Empty())
 
-	assert.True(t, reflect.DeepEqual([]int{-1}, queue.values))
+	assert.True(t, reflect.DeepEqual([]int{7}, queue.values))
 }
 
 func TestCircularQueue_ManyOperations(t *testing.T) {
@@ -261,11 +243,11 @@ func TestCircularQueue_ManyOperations(t *testing.T) {
 	assert.True(t, queue.Push(1))
 	assert.True(t, queue.Push(2))
 
-	assert.True(t, reflect.DeepEqual([]int{1, 2, -1, -1}, queue.values))
+	assert.True(t, reflect.DeepEqual([]int{1, 2, 0, 0}, queue.values))
 
 	assert.True(t, queue.Pop())
 
-	assert.True(t, reflect.DeepEqual([]int{-1, 2, -1, -1}, queue.values))
+	assert.True(t, reflect.DeepEqual([]int{1, 2, 0, 0}, queue.values))
 
 	assert.True(t, queue.Push(3))
 	assert.True(t, queue.Push(4))
@@ -281,7 +263,7 @@ func TestCircularQueue_ManyOperations(t *testing.T) {
 	assert.True(t, queue.Pop())
 	assert.True(t, queue.Pop())
 
-	assert.True(t, reflect.DeepEqual([]int{-1, -1, -1, -1}, queue.values))
+	assert.True(t, reflect.DeepEqual([]int{5, 2, 3, 4}, queue.values))
 
 	assert.True(t, queue.Empty())
 }
@@ -304,11 +286,11 @@ func TestCircularQueue_ValuesNotLost(t *testing.T) {
 	assert.True(t, queue.Push(1))
 	assert.True(t, queue.Push(2))
 
-	assert.True(t, reflect.DeepEqual([]int{1, 2, -1}, queue.values))
+	assert.True(t, reflect.DeepEqual([]int{1, 2, 0}, queue.values))
 
 	assert.True(t, queue.Pop())
 
-	assert.True(t, reflect.DeepEqual([]int{-1, 2, -1}, queue.values))
+	assert.True(t, reflect.DeepEqual([]int{1, 2, 0}, queue.values))
 
 	assert.True(t, queue.Push(3))
 	assert.True(t, queue.Push(4))
@@ -321,7 +303,7 @@ func TestCircularQueue_ValuesNotLost(t *testing.T) {
 	assert.True(t, queue.Pop())
 	assert.True(t, queue.Pop())
 
-	assert.True(t, reflect.DeepEqual([]int{4, -1, -1}, queue.values))
+	assert.True(t, reflect.DeepEqual([]int{4, 2, 3}, queue.values))
 
 	assert.False(t, queue.Empty())
 	assert.Equal(t, 4, queue.Front())
