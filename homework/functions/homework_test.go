@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -11,13 +12,10 @@ func Map[S, T any](data []S, action func(S) T) []T {
 	if data == nil {
 		return nil
 	}
-	ret := make([]T, len(data))
 	if len(data) == 0 {
-		return ret
+		return []T{}
 	}
-	for i := 0; i < len(data); i++ {
-		ret[i] = action(data[i])
-	}
+	ret := make([]T, len(data))
 	for i := 0; i < len(data); i++ {
 		ret[i] = action(data[i])
 	}
@@ -84,6 +82,7 @@ func TestMap(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			result := Map(test.data, test.action)
+			spew.Dump(result)
 			assert.True(t, reflect.DeepEqual(test.result, result))
 		})
 	}
