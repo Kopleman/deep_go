@@ -18,10 +18,38 @@ type Person struct {
 	Married bool   `properties:"married"`
 }
 
-func Serialize(person Person) string {
+// Дополнительные структуры для тестирования обобщенной функции
+type Config struct {
+	Host     string `properties:"host"`
+	Port     int    `properties:"port"`
+	Debug    bool   `properties:"debug"`
+	LogLevel string `properties:"log_level,omitempty"`
+}
+
+type Product struct {
+	ID          int     `properties:"id"`
+	Name        string  `properties:"name"`
+	Price       float64 `properties:"price"`
+	InStock     bool    `properties:"in_stock"`
+	Description string  `properties:"description,omitempty"`
+}
+
+type User struct {
+	Username string `properties:"username"`
+	Email    string `properties:"email,omitempty"`
+	Active   bool   `properties:"active"`
+	Role     string `properties:"role"`
+}
+
+// Serialize - обобщенная функция для сериализации любой структуры в .properties формат
+func Serialize[T any](obj T) string {
 	var result []string
-	v := reflect.ValueOf(person)
+	v := reflect.ValueOf(obj)
 	t := v.Type()
+
+	if v.Kind() != reflect.Struct {
+		return ""
+	}
 
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
@@ -262,4 +290,90 @@ func TestFieldOrder(t *testing.T) {
 	assert.Equal(t, "address=Order Address", lines[1])
 	assert.Equal(t, "age=30", lines[2])
 	assert.Equal(t, "married=true", lines[3])
+}
+
+func TestGenericSerializeWithConfig(t *testing.T) {
+	config := Config{
+		Host:     "localhost",
+		Port:     8080,
+		Debug:    true,
+		LogLevel: "info",
+	}
+
+	result := Serialize(config)
+	expected := "host=localhost\nport=8080\ndebug=true\nlog_level=info"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenericSerializeWithConfigOmitEmpty(t *testing.T) {
+	config := Config{
+		Host:  "localhost",
+		Port:  8080,
+		Debug: false,
+	}
+
+	result := Serialize(config)
+	expected := "host=localhost\nport=8080\ndebug=false"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenericSerializeWithProduct(t *testing.T) {
+	product := Product{
+		ID:          1,
+		Name:        "Laptop",
+		Price:       999.99,
+		InStock:     true,
+		Description: "High-performance laptop",
+	}
+
+	result := Serialize(product)
+	expected := "id=1\nname=Laptop\nprice=999.99\nin_stock=true\ndescription=High-performance laptop"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenericSerializeWithProductOmitEmpty(t *testing.T) {
+	product := Product{
+		ID:      2,
+		Name:    "Mouse",
+		Price:   29.99,
+		InStock: false,
+	}
+
+	result := Serialize(product)
+	expected := "id=2\nname=Mouse\nprice=29.99\nin_stock=false"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenericSerializeWithUser(t *testing.T) {
+	user := User{
+		Username: "john_doe",
+		Email:    "john@example.com",
+		Active:   true,
+		Role:     "admin",
+	}
+
+	result := Serialize(user)
+	expected := "username=john_doe\nemail=john@example.com\nactive=true\nrole=admin"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenericSerializeWithUserOmitEmpty(t *testing.T) {
+	user := User{
+		Username: "guest",
+		Active:   false,
+		Role:     "user",
+	}
+
+	result := Serialize(user)
+	expected := "username=guest\nactive=false\nrole=user"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenericSerializeWithNonStruct(t *testing.T) {
+	assert.Equal(t, "", Serialize("string"))
+	assert.Equal(t, "", Serialize(42))
+	assert.Equal(t, "", Serialize(true))
+
+	person := &Person{Name: "Test"}
+	assert.Equal(t, "", Serialize(person))
 }
