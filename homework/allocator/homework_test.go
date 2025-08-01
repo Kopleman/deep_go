@@ -10,13 +10,25 @@ import (
 
 // go test -v homework_test.go
 
-func Defragment(memory []byte, pointers []unsafe.Pointer) {
+func Defragment(memory []byte, pointers []unsafe.Pointer, blockByteSize int) {
 	if len(memory) == 0 {
 		return
 	}
 
+	if blockByteSize != 1 && blockByteSize != 2 && blockByteSize != 4 && blockByteSize != 8 {
+		panic("invalid block byte size - must be 1, 2, 4, or 8")
+	}
+
+	if blockByteSize > len(memory) {
+		panic("block size greater than memory size")
+	}
+
+	if len(memory)%blockByteSize != 0 {
+		panic("memory size must be divisible by block size")
+	}
+
 	memoryStart := uintptr(unsafe.Pointer(&memory[0]))
-	memoryEnd := uintptr(unsafe.Pointer(&memory[len(memory)-1]))
+	memoryEnd := uintptr(unsafe.Pointer(&memory[len(memory)-blockByteSize]))
 
 	for _, ptr := range pointers {
 		if ptr == nil {
@@ -26,9 +38,14 @@ func Defragment(memory []byte, pointers []unsafe.Pointer) {
 		if ptrAddr < memoryStart || ptrAddr > memoryEnd {
 			panic("pointer outside memory bounds")
 		}
+
+		if (ptrAddr-memoryStart)%uintptr(blockByteSize) != 0 {
+			panic("pointer not aligned to block size")
+		}
+
 		bytePtr := (*byte)(ptr)
 		if *bytePtr == 0x00 {
-			panic("pointer points to free byte")
+			panic("pointer points to free block")
 		}
 	}
 
@@ -38,16 +55,17 @@ func Defragment(memory []byte, pointers []unsafe.Pointer) {
 
 	for readPos < len(memory) {
 		currentPtr := unsafe.Pointer(&memory[readPos])
-
 		if pointerIndex < len(pointers) && currentPtr == pointers[pointerIndex] {
 			if writePos != readPos {
-				memory[writePos] = memory[readPos]
+				for i := 0; i < blockByteSize; i++ {
+					memory[writePos+i] = memory[readPos+i]
+				}
 				pointers[pointerIndex] = unsafe.Pointer(&memory[writePos])
 			}
-			writePos++
+			writePos += blockByteSize
 			pointerIndex++
 		}
-		readPos++
+		readPos += blockByteSize
 	}
 
 	for writePos < len(memory) {
@@ -85,7 +103,7 @@ func TestDefragmentation(t *testing.T) {
 		0x00, 0x00, 0x00, 0x00,
 	}
 
-	Defragment(fragmentedMemory, fragmentedPointers)
+	Defragment(fragmentedMemory, fragmentedPointers, 1)
 	assert.True(t, reflect.DeepEqual(defragmentedMemory, fragmentedMemory))
 	assert.True(t, reflect.DeepEqual(defragmentedPointers, fragmentedPointers))
 }
@@ -94,8 +112,7 @@ func TestDefragmentationEmptyMemory(t *testing.T) {
 	memory := []byte{}
 	pointers := []unsafe.Pointer{}
 
-	// Не должно паниковать
-	Defragment(memory, pointers)
+	Defragment(memory, pointers, 1)
 	assert.Equal(t, 0, len(memory))
 }
 
@@ -112,7 +129,7 @@ func TestDefragmentationAlreadyDefragmented(t *testing.T) {
 		unsafe.Pointer(&memory[1]),
 	}
 
-	Defragment(memory, pointers)
+	Defragment(memory, pointers, 1)
 	assert.True(t, reflect.DeepEqual(expectedMemory, memory))
 	assert.True(t, reflect.DeepEqual(expectedPointers, pointers))
 }
@@ -121,12 +138,12 @@ func TestDefragmentationNilPointer(t *testing.T) {
 	memory := []byte{0xFF, 0x00, 0xFF, 0x00}
 	pointers := []unsafe.Pointer{
 		unsafe.Pointer(&memory[0]),
-		nil, // nil pointer
+		nil,
 		unsafe.Pointer(&memory[2]),
 	}
 
 	assert.Panics(t, func() {
-		Defragment(memory, pointers)
+		Defragment(memory, pointers, 1)
 	})
 }
 
@@ -134,12 +151,12 @@ func TestDefragmentationPointerToFreeByte(t *testing.T) {
 	memory := []byte{0xFF, 0x00, 0xFF, 0x00}
 	pointers := []unsafe.Pointer{
 		unsafe.Pointer(&memory[0]),
-		unsafe.Pointer(&memory[1]), // указывает на 0x00
+		unsafe.Pointer(&memory[1]),
 		unsafe.Pointer(&memory[2]),
 	}
 
 	assert.Panics(t, func() {
-		Defragment(memory, pointers)
+		Defragment(memory, pointers, 1)
 	})
 }
 
@@ -150,14 +167,14 @@ func TestDefragmentationComplexCase(t *testing.T) {
 	}
 
 	pointers := []unsafe.Pointer{
-		unsafe.Pointer(&memory[0]),  // 0xAA
-		unsafe.Pointer(&memory[2]),  // 0xBB
-		unsafe.Pointer(&memory[4]),  // 0xCC
-		unsafe.Pointer(&memory[6]),  // 0xDD
-		unsafe.Pointer(&memory[9]),  // 0xEE
-		unsafe.Pointer(&memory[11]), // 0xFF
-		unsafe.Pointer(&memory[13]), // 0x11
-		unsafe.Pointer(&memory[15]), // 0x22
+		unsafe.Pointer(&memory[0]),
+		unsafe.Pointer(&memory[2]),
+		unsafe.Pointer(&memory[4]),
+		unsafe.Pointer(&memory[6]),
+		unsafe.Pointer(&memory[9]),
+		unsafe.Pointer(&memory[11]),
+		unsafe.Pointer(&memory[13]),
+		unsafe.Pointer(&memory[15]),
 	}
 
 	expectedMemory := []byte{
@@ -165,10 +182,9 @@ func TestDefragmentationComplexCase(t *testing.T) {
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	}
 
-	Defragment(memory, pointers)
+	Defragment(memory, pointers, 1)
 	assert.True(t, reflect.DeepEqual(expectedMemory, memory))
 
-	// Проверяем, что указатели указывают на правильные позиции
 	for i := 0; i < len(pointers); i++ {
 		bytePtr := (*byte)(pointers[i])
 		assert.Equal(t, expectedMemory[i], *bytePtr)
@@ -176,25 +192,21 @@ func TestDefragmentationComplexCase(t *testing.T) {
 }
 
 func BenchmarkDefragmentation(b *testing.B) {
-	// Создаем большой фрагментированный массив
 	size := 1000
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// Создаем новые массивы для каждого теста
 		memory := make([]byte, size)
 		pointers := make([]unsafe.Pointer, size/2)
 
-		// Заполняем память чередующимися занятыми и свободными байтами
 		for j := 0; j < size; j++ {
 			if j%2 == 0 {
-				memory[j] = 0xFF // занятый байт (всегда не 0x00)
+				memory[j] = 0xFF
 			} else {
-				memory[j] = 0x00 // свободный байт
+				memory[j] = 0x00
 			}
 		}
 
-		// Создаем указатели на занятые байты
 		pointerIndex := 0
 		for j := 0; j < size && pointerIndex < len(pointers); j++ {
 			if j%2 == 0 {
@@ -203,9 +215,220 @@ func BenchmarkDefragmentation(b *testing.B) {
 			}
 		}
 
-		// Обрезаем массив указателей до фактического размера
 		testPointers := pointers[:pointerIndex]
 
-		Defragment(memory, testPointers)
+		Defragment(memory, testPointers, 1)
+	}
+}
+
+func TestDefragmentation2ByteBlocks(t *testing.T) {
+	memory := []byte{
+		0xFF, 0xAA, 0x00, 0x00, 0xBB, 0xCC, 0x00, 0x00,
+		0x00, 0x00, 0xDD, 0xEE, 0x00, 0x00, 0xFF, 0x11,
+	}
+
+	pointers := []unsafe.Pointer{
+		unsafe.Pointer(&memory[0]),
+		unsafe.Pointer(&memory[4]),
+		unsafe.Pointer(&memory[10]),
+		unsafe.Pointer(&memory[14]),
+	}
+
+	expectedMemory := []byte{
+		0xFF, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+
+	Defragment(memory, pointers, 2)
+	assert.True(t, reflect.DeepEqual(expectedMemory, memory))
+
+	for i := 0; i < len(pointers); i++ {
+		bytePtr := (*byte)(pointers[i])
+		assert.Equal(t, expectedMemory[i*2], *bytePtr)
+	}
+}
+
+func TestDefragmentation4ByteBlocks(t *testing.T) {
+	memory := []byte{
+		0xFF, 0xAA, 0xBB, 0xCC, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0xDD, 0xEE, 0xFF, 0x11,
+	}
+
+	pointers := []unsafe.Pointer{
+		unsafe.Pointer(&memory[0]),
+		unsafe.Pointer(&memory[12]),
+	}
+
+	expectedMemory := []byte{
+		0xFF, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+
+	Defragment(memory, pointers, 4)
+	assert.True(t, reflect.DeepEqual(expectedMemory, memory))
+
+	for i := 0; i < len(pointers); i++ {
+		bytePtr := (*byte)(pointers[i])
+		assert.Equal(t, expectedMemory[i*4], *bytePtr)
+	}
+}
+
+func TestDefragmentation8ByteBlocks(t *testing.T) {
+	memory := []byte{
+		0xFF, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+
+	pointers := []unsafe.Pointer{
+		unsafe.Pointer(&memory[0]),
+	}
+
+	expectedMemory := []byte{
+		0xFF, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+
+	Defragment(memory, pointers, 8)
+	assert.True(t, reflect.DeepEqual(expectedMemory, memory))
+
+	bytePtr := (*byte)(pointers[0])
+	assert.Equal(t, expectedMemory[0], *bytePtr)
+}
+
+func TestDefragmentationInvalidBlockSize(t *testing.T) {
+	memory := []byte{0xFF, 0x00, 0xFF, 0x00}
+	pointers := []unsafe.Pointer{
+		unsafe.Pointer(&memory[0]),
+		unsafe.Pointer(&memory[2]),
+	}
+
+	assert.Panics(t, func() {
+		Defragment(memory, pointers, 3)
+	})
+
+	assert.Panics(t, func() {
+		Defragment(memory, pointers, 16)
+	})
+}
+
+func TestDefragmentationUnalignedPointer(t *testing.T) {
+	memory := []byte{0xFF, 0x00, 0xFF, 0x00}
+	pointers := []unsafe.Pointer{
+		unsafe.Pointer(&memory[0]),
+		unsafe.Pointer(&memory[1]),
+	}
+
+	assert.Panics(t, func() {
+		Defragment(memory, pointers, 2)
+	})
+}
+
+func TestDefragmentationMemoryNotDivisible(t *testing.T) {
+	memory := []byte{0xFF, 0x00, 0xFF}
+	pointers := []unsafe.Pointer{
+		unsafe.Pointer(&memory[0]),
+	}
+
+	assert.Panics(t, func() {
+		Defragment(memory, pointers, 2)
+	})
+}
+
+func BenchmarkDefragmentation2ByteBlocks(b *testing.B) {
+	size := 1000
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		memory := make([]byte, size)
+		pointers := make([]unsafe.Pointer, size/4)
+
+		for j := 0; j < size; j += 2 {
+			if j%4 == 0 {
+				memory[j] = 0xFF
+				memory[j+1] = 0xAA
+			} else {
+				memory[j] = 0x00
+				memory[j+1] = 0x00
+			}
+		}
+
+		pointerIndex := 0
+		for j := 0; j < size && pointerIndex < len(pointers); j += 2 {
+			if j%4 == 0 {
+				pointers[pointerIndex] = unsafe.Pointer(&memory[j])
+				pointerIndex++
+			}
+		}
+
+		testPointers := pointers[:pointerIndex]
+		Defragment(memory, testPointers, 2)
+	}
+}
+
+func BenchmarkDefragmentation4ByteBlocks(b *testing.B) {
+	size := 1000
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		memory := make([]byte, size)
+		pointers := make([]unsafe.Pointer, size/8)
+
+		for j := 0; j < size; j += 4 {
+			if j%8 == 0 {
+				memory[j] = 0xFF
+				memory[j+1] = 0xAA
+				memory[j+2] = 0xBB
+				memory[j+3] = 0xCC
+			} else {
+				memory[j] = 0x00
+				memory[j+1] = 0x00
+				memory[j+2] = 0x00
+				memory[j+3] = 0x00
+			}
+		}
+
+		pointerIndex := 0
+		for j := 0; j < size && pointerIndex < len(pointers); j += 4 {
+			if j%8 == 0 {
+				pointers[pointerIndex] = unsafe.Pointer(&memory[j])
+				pointerIndex++
+			}
+		}
+
+		testPointers := pointers[:pointerIndex]
+		Defragment(memory, testPointers, 4)
+	}
+}
+
+func BenchmarkDefragmentation8ByteBlocks(b *testing.B) {
+	size := 1000
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		memory := make([]byte, size)
+		pointers := make([]unsafe.Pointer, size/16)
+
+		for j := 0; j < size; j += 8 {
+			if j%16 == 0 {
+				for k := 0; k < 8; k++ {
+					memory[j+k] = byte(0xFF - k)
+				}
+			} else {
+				for k := 0; k < 8; k++ {
+					memory[j+k] = 0x00
+				}
+			}
+		}
+
+		pointerIndex := 0
+		for j := 0; j < size && pointerIndex < len(pointers); j += 8 {
+			if j%16 == 0 {
+				pointers[pointerIndex] = unsafe.Pointer(&memory[j])
+				pointerIndex++
+			}
+		}
+
+		testPointers := pointers[:pointerIndex]
+		Defragment(memory, testPointers, 8)
 	}
 }
